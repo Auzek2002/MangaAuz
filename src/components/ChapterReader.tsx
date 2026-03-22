@@ -80,8 +80,11 @@ export default function ChapterReader({
   const [mode,       setMode]       = useState<"vertical" | "paged">("vertical");
   const [page,       setPage]       = useState(0);
   const [imgErrors,  setImgErrors]  = useState<Set<number>>(new Set());
+  const [imgRetries, setImgRetries] = useState<Record<number, number>>({});
   const lastY  = useRef(0);
   const headerRef = useRef<HTMLDivElement>(null);
+
+  const MAX_RETRIES = 3;
 
   /* Hide / reveal header on scroll */
   useEffect(() => {
@@ -116,9 +119,33 @@ export default function ChapterReader({
   const HEADER_H  = 90; /* px — must match paddingTop below */
   const DRAWER_W  = 280;
 
-  /* Error flag setter */
+  /* Permanently mark as failed */
   const markError = (i: number) =>
     setImgErrors((s) => { const n = new Set(s); n.add(i); return n; });
+
+  /* Retry an image (clear error + reset retry count) */
+  const retryImage = (i: number) => {
+    setImgErrors((s) => { const n = new Set(s); n.delete(i); return n; });
+    setImgRetries((r) => ({ ...r, [i]: 0 }));
+  };
+
+  /* Called by onError — auto-retries up to MAX_RETRIES, then marks failed.
+     Changing imgRetries[i] changes the img key, forcing a fresh browser fetch. */
+  const handleImgError = useCallback((i: number) => {
+    setImgRetries((r) => {
+      const attempts = r[i] ?? 0;
+      if (attempts < MAX_RETRIES) {
+        // Schedule a key change after a growing delay (1s, 2s, 3s) → fresh request
+        setTimeout(
+          () => setImgRetries((prev) => ({ ...prev, [i]: (prev[i] ?? 0) + 1 })),
+          1000 * (attempts + 1)
+        );
+      } else {
+        setTimeout(() => markError(i), 0);
+      }
+      return r;
+    });
+  }, []);
 
   /* ── Shared "end of chapter" nav block ── */
   const EndNav = () => (
@@ -520,32 +547,44 @@ export default function ChapterReader({
               {imageUrls.map((url, i) =>
                 imgErrors.has(i) ? (
                   <div
-                    key={i}
+                    key={`err-${i}`}
                     style={{
                       width:           "100%",
                       height:          "220px",
                       display:         "flex",
+                      flexDirection:   "column",
                       alignItems:      "center",
                       justifyContent:  "center",
+                      gap:             "12px",
                       background:      "#14141f",
                       color:           "#44445a",
                       fontSize:        "13px",
                       borderBottom:    "1px solid #252535",
                     }}
                   >
-                    Page {i + 1} failed to load
+                    <span>Page {i + 1} failed to load</span>
+                    <button
+                      onClick={() => retryImage(i)}
+                      style={{
+                        padding:      "6px 16px",
+                        borderRadius: "8px",
+                        border:       "1px solid #3a3a50",
+                        background:   "rgba(255,255,255,0.06)",
+                        color:        "#8888aa",
+                        fontSize:     "12px",
+                        cursor:       "pointer",
+                      }}
+                    >
+                      Retry
+                    </button>
                   </div>
                 ) : (
                   <img
-                    key={i}
+                    key={`page-${i}-${imgRetries[i] ?? 0}`}
                     src={url}
                     alt={`Page ${i + 1}`}
-                    style={{
-                      width:       "100%",
-                      display:     "block",
-                      lineHeight:  0,
-                    }}
-                    onError={() => markError(i)}
+                    style={{ width: "100%", display: "block", lineHeight: 0 }}
+                    onError={() => handleImgError(i)}
                   />
                 )
               )}
@@ -582,32 +621,49 @@ export default function ChapterReader({
               {imgErrors.has(page) ? (
                 <div
                   style={{
-                    width:           "100%",
-                    maxWidth:        "840px",
-                    height:          "60vh",
-                    display:         "flex",
-                    alignItems:      "center",
-                    justifyContent:  "center",
-                    background:      "#14141f",
-                    borderRadius:    "10px",
-                    color:           "#44445a",
-                    fontSize:        "13px",
+                    width:          "100%",
+                    maxWidth:       "840px",
+                    height:         "60vh",
+                    display:        "flex",
+                    flexDirection:  "column",
+                    alignItems:     "center",
+                    justifyContent: "center",
+                    gap:            "12px",
+                    background:     "#14141f",
+                    borderRadius:   "10px",
+                    color:          "#44445a",
+                    fontSize:       "13px",
                   }}
                 >
-                  Page {page + 1} failed to load
+                  <span>Page {page + 1} failed to load</span>
+                  <button
+                    onClick={() => retryImage(page)}
+                    style={{
+                      padding:      "6px 16px",
+                      borderRadius: "8px",
+                      border:       "1px solid #3a3a50",
+                      background:   "rgba(255,255,255,0.06)",
+                      color:        "#8888aa",
+                      fontSize:     "12px",
+                      cursor:       "pointer",
+                    }}
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : (
                 <img
+                  key={`page-${page}-${imgRetries[page] ?? 0}`}
                   src={imageUrls[page]}
                   alt={`Page ${page + 1}`}
                   style={{
-                    maxWidth:   "840px",
-                    width:      "100%",
-                    maxHeight:  `calc(100vh - ${HEADER_H + 60}px)`,
-                    objectFit:  "contain",
-                    display:    "block",
+                    maxWidth:  "840px",
+                    width:     "100%",
+                    maxHeight: `calc(100vh - ${HEADER_H + 60}px)`,
+                    objectFit: "contain",
+                    display:   "block",
                   }}
-                  onError={() => markError(page)}
+                  onError={() => handleImgError(page)}
                 />
               )}
             </div>

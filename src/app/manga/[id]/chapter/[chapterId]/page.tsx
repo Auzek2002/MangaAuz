@@ -1,5 +1,4 @@
 import {
-  getChapterPages,
   getAllMangaChapters,
   getMangaById,
   getMangaTitle,
@@ -19,14 +18,12 @@ export const revalidate = 300;
 export default async function ChapterPage({ params }: PageProps) {
   const { id, chapterId } = await params;
 
-  let pages;
   let manga;
   let chaptersData;
   let chapter;
 
   try {
-    [pages, manga, chaptersData, chapter] = await Promise.all([
-      getChapterPages(chapterId),
+    [manga, chaptersData, chapter] = await Promise.all([
       getMangaById(id),
       getAllMangaChapters(id),
       getChapterById(chapterId),
@@ -56,7 +53,7 @@ export default async function ChapterPage({ params }: PageProps) {
   const externalUrl = chapter.attributes.externalUrl;
 
   // Chapter is hosted externally — can't display pages
-  if (externalUrl || pages.chapter.data.length === 0) {
+  if (externalUrl) {
     return (
       <ExternalChapter
         mangaId={id}
@@ -69,17 +66,15 @@ export default async function ChapterPage({ params }: PageProps) {
     );
   }
 
-  const imageUrls = pages.chapter.data.map(
-    (filename) => `${pages.baseUrl}/data/${pages.chapter.hash}/${filename}`
-  );
-
+  // Image URLs are fetched client-side in ChapterReader so the browser's own IP
+  // is used when requesting MangaDex's at-home CDN node — prevents IP mismatch
+  // failures that occur when the server (Vercel) fetches the token on behalf of users.
   return (
     <ChapterReader
       mangaId={id}
       chapterId={chapterId}
       mangaTitle={mangaTitle}
       chapterTitle={chapterTitle}
-      imageUrls={imageUrls}
       prevChapterId={prevChapter?.id || null}
       nextChapterId={nextChapter?.id || null}
       chapters={sameLangChapters}

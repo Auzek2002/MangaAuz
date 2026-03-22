@@ -20,7 +20,6 @@ interface ChapterReaderProps {
   chapterId:      string;
   mangaTitle:     string;
   chapterTitle:   string;
-  imageUrls:      string[];
   prevChapterId:  string | null;
   nextChapterId:  string | null;
   chapters:       Chapter[];
@@ -70,7 +69,6 @@ export default function ChapterReader({
   chapterId,
   mangaTitle,
   chapterTitle,
-  imageUrls,
   prevChapterId,
   nextChapterId,
   chapters,
@@ -81,10 +79,36 @@ export default function ChapterReader({
   const [page,       setPage]       = useState(0);
   const [imgErrors,  setImgErrors]  = useState<Set<number>>(new Set());
   const [imgRetries, setImgRetries] = useState<Record<number, number>>({});
+  // Fetched client-side so the browser's IP is used for the MangaDex CDN node
+  const [imageUrls,  setImageUrls]  = useState<string[]>([]);
+  const [pagesLoading, setPagesLoading] = useState(true);
+  const [pagesError,   setPagesError]   = useState(false);
   const lastY  = useRef(0);
   const headerRef = useRef<HTMLDivElement>(null);
 
   const MAX_RETRIES = 3;
+
+  // Fetch at-home server from the browser so the CDN token is tied to the user's IP
+  useEffect(() => {
+    setPagesLoading(true);
+    setPagesError(false);
+    fetch(`https://api.mangadex.org/at-home/server/${chapterId}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("at-home fetch failed");
+        return r.json();
+      })
+      .then((data) => {
+        const urls: string[] = (data.chapter.data as string[]).map(
+          (filename) => `${data.baseUrl}/data/${data.chapter.hash}/${filename}`
+        );
+        setImageUrls(urls);
+        setPagesLoading(false);
+      })
+      .catch(() => {
+        setPagesError(true);
+        setPagesLoading(false);
+      });
+  }, [chapterId]);
 
   /* Hide / reveal header on scroll */
   useEffect(() => {
@@ -314,7 +338,7 @@ export default function ChapterReader({
               className="clamp-1"
               style={{ fontSize: "11px", color: "#44445a", margin: 0, marginTop: "2px" }}
             >
-              {chapterTitle} &bull; {imageUrls.length} pages
+              {chapterTitle}{imageUrls.length > 0 ? ` • ${imageUrls.length} pages` : ""}
             </p>
           </div>
 
@@ -525,7 +549,37 @@ export default function ChapterReader({
       ══════════════════════════════════════════════════════════════ */}
       <div style={{ paddingTop: `${HEADER_H}px` }}>
 
-        {mode === "vertical" ? (
+        {/* Loading / error states while fetching at-home URL */}
+        {pagesLoading && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh", color: "#44445a", fontSize: "14px" }}>
+            Loading pages…
+          </div>
+        )}
+        {pagesError && (
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "60vh", gap: "14px", color: "#44445a", fontSize: "14px" }}>
+            <span>Failed to load chapter pages.</span>
+            <button
+              onClick={() => {
+                setPagesLoading(true);
+                setPagesError(false);
+                fetch(`https://api.mangadex.org/at-home/server/${chapterId}`)
+                  .then((r) => r.json())
+                  .then((data) => {
+                    setImageUrls((data.chapter.data as string[]).map(
+                      (f) => `${data.baseUrl}/data/${data.chapter.hash}/${f}`
+                    ));
+                    setPagesLoading(false);
+                  })
+                  .catch(() => { setPagesError(true); setPagesLoading(false); });
+              }}
+              style={{ padding: "8px 20px", borderRadius: "10px", border: "1px solid #3a3a50", background: "rgba(255,255,255,0.06)", color: "#8888aa", fontSize: "13px", cursor: "pointer" }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!pagesLoading && !pagesError && mode === "vertical" ? (
           /* ── VERTICAL SCROLL MODE ──
              CRITICAL: outer div is full-width flex-column centering
              Inner div caps the reading width and is centered with margin:auto
@@ -596,7 +650,7 @@ export default function ChapterReader({
             </div>
           </div>
 
-        ) : (
+        ) : !pagesLoading && !pagesError ? (
           /* ── PAGED MODE ──
              Full-width flex column, image centered, no drawer offset needed */
           <div
@@ -706,7 +760,7 @@ export default function ChapterReader({
               <EndNav />
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

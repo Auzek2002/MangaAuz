@@ -88,11 +88,12 @@ export default function ChapterReader({
 
   const MAX_RETRIES = 3;
 
-  // Fetch at-home server from the browser so the CDN token is tied to the user's IP
+  // Fetch via our own API route (avoids CORS — browser calls same origin,
+  // the route handler calls MangaDex server-side)
   useEffect(() => {
     setPagesLoading(true);
     setPagesError(false);
-    fetch(`https://api.mangadex.org/at-home/server/${chapterId}`)
+    fetch(`/api/at-home/${chapterId}`)
       .then((r) => {
         if (!r.ok) throw new Error("at-home fetch failed");
         return r.json();
@@ -562,7 +563,7 @@ export default function ChapterReader({
               onClick={() => {
                 setPagesLoading(true);
                 setPagesError(false);
-                fetch(`https://api.mangadex.org/at-home/server/${chapterId}`)
+                fetch(`/api/at-home/${chapterId}`)
                   .then((r) => r.json())
                   .then((data) => {
                     setImageUrls((data.chapter.data as string[]).map(

@@ -6,6 +6,7 @@ import { TrendingUp, Clock, Star } from "lucide-react";
 
 export const revalidate = 300;
 
+
 export default async function HomePage() {
   const [popular, latest, topRated] = await Promise.all([
     getPopularManga(10),
